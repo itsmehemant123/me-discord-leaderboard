@@ -8,6 +8,7 @@ from string import ascii_letters
 from os import listdir
 from os.path import isfile, join
 from discord.ext import commands
+from discord import utils
 from models.base import Session, engine, Base
 from models.servers import Server
 from models.users import User
@@ -24,70 +25,45 @@ class LeaderBoyt:
         self.session = Session()
         self.bot = bot
         
-    # def write_to_yaml(self, messages):
-    #     file_handle = open(self.wheatley_config['corpus-folder'] + str(time.time()) + '.yml', 'w+', encoding = 'utf-8')
-    #     corpus_dict = {'categories': ['discord-chat'], 'conversations': []}
-        
-    #     for stim, resp in zip(messages[0::2], messages[1::2]):
-    #         stim = self.ping_replace.sub('', stim.content).replace('\\', '\\\\')
-    #         resp = self.ping_replace.sub('', resp.content).replace('\\', '\\\\')
+    def write_to_db(self, messages):
+        for message in messages:
+            rxns = message.reactions
+            user = message.author
+            print(rxns)
 
-    #         if (self.wheatley_config['max_dialog_length'] is not -1):
-    #             stim = stim[:self.wheatley_config['max_dialog_length']]
-    #             resp = resp[:self.wheatley_config['max_dialog_length']]
 
-    #         corpus_dict['conversations'].append([stim, resp])
+    async def download_messages(self, channel, limit, current_count, last_msg, msg_handle):
+        before = None
+        dwnld_limit = 100
 
-    #     file_handle.write(yaml.dump(corpus_dict, default_flow_style=False))
-    #     file_handle.close()
+        if last_msg is not None:
+            before = last_msg
 
-    # async def download_messages(self, channel, limit, is_all, current_count, last_msg, msg_handle):
-    #     before = None
-    #     dwnld_limit = 100
+        if (current_count >= limit):
+            await self.bot.edit_message(msg_handle, 'Finished downloading messages.')
+            return current_count
 
-    #     if last_msg is not None:
-    #         before = last_msg
+        batch_size = 0
+        msg_set = []
+        async for message in self.bot.logs_from(channel, limit=dwnld_limit, before=before):
+            batch_size += 1
+            last_msg = message
+            msg_set.append(message)
 
-    #     if (not is_all and current_count >= limit):
-    #         await self.bot.edit_message(msg_handle, 'Finished downloading messages.')
-    #         return current_count
+        self.write_to_db(msg_set)
 
-    #     batch_size = 0
-    #     msg_set = []
-    #     async for message in self.bot.logs_from(channel, limit=dwnld_limit, before=before):
-    #         batch_size += 1
-    #         last_msg = message
-    #         msg_set.append(message)
+        if (current_count % 1000 == 0):
+            await self.bot.edit_message(msg_handle, 'Downloaded ' + str(current_count) + ' messages.')
 
-    #     self.write_to_yaml(msg_set)
-
-    #     if (current_count % 1000 == 0):
-    #         await self.bot.edit_message(msg_handle, 'Downloaded ' + str(current_count) + ' messages.')
-
-    #     current_count += batch_size
-    #     if batch_size < 100:
-    #         await self.bot.edit_message(msg_handle, 'Finished downloading messages.')
-    #         return current_count
-    #     else:
-    #         return current_count + await self.download_messages(channel, limit, is_all, current_count, last_msg, msg_handle)
-
-    # @commands.command(pass_context=True, no_pm=True)
-    # async def prep_db(self, ctx, limit: str, channel: discord.Channel):
-    #     if (len(set([role.name.lower() for role in ctx.message.author.roles]).intersection(set(self.admin_roles))) == 0):
-    #         await self.bot.send_message(ctx.message.channel, 'Unauthorized to issue this command.')
-    #         return
-    #     logging.info('issued download with: ' + limit + ', in :' + channel.name + '.')
-    #     resp = await self.bot.send_message(ctx.message.channel, 'Downloading messages.')
-    #     is_all = False
-    #     if (limit == 'all'):
-    #         is_all = True
-    #         limit = None
-    #     else:
-    #         limit = int(limit)
-    #     await self.download_messages(channel, limit, is_all, 0, None, resp)
+        current_count += batch_size
+        if batch_size < 100:
+            await self.bot.edit_message(msg_handle, 'Finished downloading messages.')
+            return current_count
+        else:
+            return current_count + await self.download_messages(channel, limit, current_count, last_msg, msg_handle)
 
     @commands.command(pass_context=True, no_pm=True)
-    async def initialize(self, ctx):
+    async def init(self, ctx):
         logging.info('Start configuration for server:' + ctx.message.server.id)
         
         discord_server = ctx.message.server
@@ -114,7 +90,7 @@ class LeaderBoyt:
         await self.bot.send_message(ctx.message.channel, 'Use `!configstatus` to check the status, and set them with `!set <param> <value>`.')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def configstatus(self, ctx):
+    async def check(self, ctx):
         if (not await self.check_and_dismiss(ctx, True)): return
         
         server_configuration = ''
@@ -123,7 +99,7 @@ class LeaderBoyt:
         if (server.channel == ''): 
             server_configuration += 'Channel not set. Do `!set chan #<channelname>`\n'
         else:
-            server_configuration += 'Channel: ' + server.channel + '\n'
+            server_configuration += 'Channel: <#' + server.channel + '>\n'
         if (server.rx1 == ''): 
             server_configuration += 'Upvote emoji not set. Do `!set up <emoji>`\n'
         else:
@@ -148,7 +124,7 @@ class LeaderBoyt:
         server = self.session.query(Server).filter(Server.discord_id == ctx.message.server.id).first()
 
         if (attribute == 'chan'):
-            server.channel = val
+            server.channel = re.sub('[<#>]', '', val)
         elif (attribute == 'up'):
             server.rx1 = val
         elif (attribute == 'down'):
@@ -165,16 +141,19 @@ class LeaderBoyt:
 
         self.session.commit()
         if (server_configuration is not ''): await self.bot.send_message(ctx.message.channel, server_configuration)
+        else: await self.bot.send_message(ctx.message.channel, 'Finished configuring bot for this server.')
         logging.info('SET')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def save(self, ctx):
-        if (not await self.check_and_dismiss(ctx)): return
-        logging.info('lol')
-
-    @commands.command(pass_context=True, no_pm=True)
-    async def abort(self, ctx):
-        if (not await self.check_and_dismiss(ctx)): return
+    async def populate(self, ctx):
+        if (not await self.check_and_dismiss(ctx)):
+            return
+        server = self.session.query(Server).filter(Server.discord_id == ctx.message.server.id).first()
+        channel = discord.utils.get(ctx.message.server.channels, id=server.channel)
+        logging.info('Issued download in: ' + channel.name + '.')
+        resp = await self.bot.send_message(ctx.message.channel, 'Downloading messages.')
+        
+        await self.download_messages(channel, 20000, 0, None, resp)
         logging.info('lol')
 
     @commands.command(pass_context=True, no_pm=True)
@@ -183,8 +162,9 @@ class LeaderBoyt:
         logging.info('lol')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def top(self, ctx):
+    async def top(self, ctx, channel: discord.Channel):
         if (not await self.check_and_dismiss(ctx)): return
+        print(channel.id + ':' + channel.name)
         logging.info('lol')
 
     @commands.command(pass_context=True, no_pm=True)
