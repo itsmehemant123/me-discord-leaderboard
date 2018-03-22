@@ -31,3 +31,7 @@ pip install -r requirements.txt
 ```bash
 python client.py
 ```
+
+### Improvements
+
+- Use function decorators/annotations for checks.
