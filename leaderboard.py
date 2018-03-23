@@ -164,7 +164,7 @@ class LeaderBoyt:
         if (server.rx2 == ''): 
             server_configuration += 'Downvote emoji not set. Do `!set down <emoji>`\n'
         else:
-            server_configuration += 'Downvote amoji: ' + server.rx2 + '\n'
+            server_configuration += 'Downvote emoji: ' + server.rx2 + '\n'
 
         await self.bot.send_message(ctx.message.channel, server_configuration)
         logging.info('Check status.')
@@ -230,115 +230,62 @@ class LeaderBoyt:
     async def stats(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
         
-        current_server = ctx.message.server
-        db_server = self.session.query(Server).filter(Server.discord_id == str(current_server.id)).first()
-        if (db_server is None):
-            return
-
-        dank_memers = self.session.query(Message.user_id, func.sum(Message.rx1_count), func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx1_count).desc()).limit(10).all()
-        shit_memers = self.session.query(Message.user_id, func.sum(Message.rx2_count), func.sum(Message.rx1_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx2_count).desc()).limit(10).all()
-
-        leaderboard_embed = discord.Embed(title='Leaderboard')
-        leaderboard_embed.set_author(name='LeaderBOYT', url='https://github.com/itsmehemant123/me-discord-leaderboard', icon_url='https://photos.hd92.me/images/2018/03/23/martin-shkreli.png')
-
-        shitboard_embed = discord.Embed(title='Shitboard')
-        shitboard_embed.set_author(name='LeaderBOYT', url='https://github.com/itsmehemant123/me-discord-leaderboard', icon_url='https://photos.hd92.me/images/2018/03/23/martin-shkreli.png')
-
-        user_list = ''
-        stat_list = ''
-
-        for ind, memer in enumerate(dank_memers):
-            user = self.session.query(User).filter(User.id == memer[0]).first()
-            user_list += str(ind) + ') ' + user.display_name + '\n'
-            stat_list += str(memer[1]) + db_server.rx1 + ' ' + str(memer[2]) + db_server.rx2 + '\n'
-
-        if (user_list is ''):
-            user_list = 'No info. Populate the database with `!populate` for old memes.'
-        if (stat_list is ''):
-            stat_list = 'No info. Populate the database with `!populate` for old memes.'
-        
-        leaderboard_embed.add_field(name='Top Memers', value=user_list, inline=True)
-        leaderboard_embed.add_field(name='Stats', value=stat_list, inline=True)
-
-        user_list = ''
-        stat_list = ''
-
-        for ind, memer in enumerate(shit_memers):
-            user = self.session.query(User).filter(User.id == memer[0]).first()
-            user_list += str(ind) + ') ' + user.display_name + '\n'
-            stat_list += str(memer[1]) + db_server.rx2 + ' ' + str(memer[2]) + db_server.rx1 + '\n'
-
-        if (user_list is ''):
-            user_list = 'No info. Populate the database with `!populate` for old memes.'
-        if (stat_list is ''):
-            stat_list = 'No info. Populate the database with `!populate` for old memes.'
-        
-        shitboard_embed.add_field(name='Shit Memers', value=user_list, inline=True)
-        shitboard_embed.add_field(name='Stats', value=stat_list, inline=True)
-
-        await self.bot.send_message(ctx.message.channel, embed=leaderboard_embed)
-        await self.bot.send_message(ctx.message.channel, embed=shitboard_embed)
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, True))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, False))
         logging.info('Generated stats.')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def top(self, ctx, channel: discord.Channel):
+    async def top(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
-        current_server = ctx.message.server
-        db_server = self.session.query(Server).filter(Server.discord_id == str(current_server.id)).first()
-        if (db_server is None):
-            return
         
-        dank_memers = self.session.query(Message.user_id, func.sum(Message.rx1_count), func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx1_count).desc()).limit(10).all()
-        
-        leaderboard_embed = discord.Embed(title='Leaderboard')
-        leaderboard_embed.set_author(name='LeaderBOYT', url='https://github.com/itsmehemant123/me-discord-leaderboard', icon_url='https://photos.hd92.me/images/2018/03/23/martin-shkreli.png')
-
-        user_list = ''
-        stat_list = ''
-
-        for ind, memer in enumerate(dank_memers):
-            user = self.session.query(User).filter(User.id == memer[0]).first()
-            user_list += str(ind) + ') ' + user.display_name + '\n'
-            stat_list += str(memer[1]) + db_server.rx1 + ' ' + str(memer[2]) + db_server.rx2 + '\n'
-        
-        leaderboard_embed.add_field(name='Top Memers', value=user_list, inline=True)
-        leaderboard_embed.add_field(name='Stats', value=stat_list, inline=True)
-
-        await self.bot.send_message(ctx.message.channel, embed=leaderboard_embed)
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, True))
         logging.info('Get top memers.')
 
     @commands.command(pass_context=True, no_pm=True)
     async def bottom(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
-        
-        current_server = ctx.message.server
-        db_server = self.session.query(Server).filter(Server.discord_id == str(current_server.id)).first()
-        if (db_server is None):
-            return
-        
-        shit_memers = self.session.query(Message.user_id, func.sum(Message.rx2_count), func.sum(Message.rx1_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx2_count).desc()).limit(10).all()
 
-        shitboard_embed = discord.Embed(title='Shitboard')
-        shitboard_embed.set_author(name='LeaderBOYT', url='https://github.com/itsmehemant123/me-discord-leaderboard', icon_url='https://photos.hd92.me/images/2018/03/23/martin-shkreli.png')
-
-        user_list = ''
-        stat_list = ''
-
-        for ind, memer in enumerate(shit_memers):
-            user = self.session.query(User).filter(User.id == memer[0]).first()
-            user_list += str(ind) + ') ' + user.display_name + '\n'
-            stat_list += str(memer[1]) + db_server.rx2 + ' ' + str(memer[2]) + db_server.rx1 + '\n'
-        
-        shitboard_embed.add_field(name='Shit Memers', value=user_list, inline=True)
-        shitboard_embed.add_field(name='Stats', value=stat_list, inline=True)
-
-        await self.bot.send_message(ctx.message.channel, embed=shitboard_embed)
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, False))
         logging.info('Get shit memers.')
 
     @commands.command(pass_context=True, no_pm=True)
     async def test(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
         logging.info('lol')
+
+    def generate_memer_board(self, ctx, is_asc):
+        current_server = ctx.message.server
+        db_server = self.session.query(Server).filter(Server.discord_id == str(current_server.id)).first()
+        if (db_server is None):
+            return
+
+        heading = 'Memers'
+
+        if (is_asc):
+            memers = self.session.query(Message.user_id, func.sum(Message.rx1_count), func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx1_count).desc()).limit(10).all()
+            heading = 'Top ' + heading
+        else:
+            memers = self.session.query(Message.user_id, func.sum(Message.rx2_count), func.sum(Message.rx1_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx2_count).desc()).limit(10).all()
+            heading = 'Shit ' + heading
+        
+        board_embed = discord.Embed(title='Leaderboard')
+        board_embed.set_author(name='LeaderBOYT', url='https://github.com/itsmehemant123/me-discord-leaderboard', icon_url='https://photos.hd92.me/images/2018/03/23/martin-shkreli.png')
+
+        user_list = ''
+        stat_list = ''
+
+        for ind, memer in enumerate(memers):
+            user = self.session.query(User).filter(User.id == memer[0]).first()
+            user_list += str(ind) + ') ' + user.display_name + '\n'
+            if (is_asc):
+                stat_list += str(memer[1]) + ' ' + db_server.rx1 + '\n'
+            else:
+                stat_list += str(memer[1]) + ' ' + db_server.rx2 + '\n'
+        
+        board_embed.add_field(name=heading, value=user_list, inline=True)
+        board_embed.add_field(name='Stats', value=stat_list, inline=True)
+
+        return board_embed
 
     async def readmeme(self, message):
         logging.info('Processing incoming meme.')
