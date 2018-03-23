@@ -129,13 +129,14 @@ class LeaderBoyt:
         if (db_user is None):
             new_user = User(discord_user.id, discord_user.name, discord_user.display_name)
             self.session.add(new_user)
+            db_user = new_user
 
         if (db_server is None):
             db_status = self.session.query(Status).join(Server).filter(Server.discord_id == discord_server.id).first()
             if (db_status is not None): self.session.delete(db_status)
 
             new_server = Server(discord_server.id, discord_server.name, '', '', '', '')
-            new_status = Status(0, new_user, new_server)
+            new_status = Status(0, db_user, new_server)
             self.session.add(new_server)
             self.session.add(new_status)
         
