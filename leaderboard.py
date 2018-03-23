@@ -42,7 +42,7 @@ class LeaderBoyt:
                 temp_cache['new_users'].append(current_user)
                 temp_cache['user_keys'].append(current_user.id)
             else:
-                current_user_index = [i for i,d in enumerate(temp_cache['new_users']) if d['id'] == current_user.id]
+                current_user_index = [i for i,d in enumerate(temp_cache['new_users']) if d.id == current_user.id]
                 if (len(current_user_index) == 0):
                     current_user_in_db = True
                 else:
@@ -100,10 +100,11 @@ class LeaderBoyt:
             else:
                 msg_user = new_users[message['user_index']]
 
-            rx1 = [d for d in message['rxns'] if d.emoji == server.rx1]
-            rx2 = [d for d in message['rxns'] if d.emoji == server.rx2]
+            rx1 = [d for d in message['rxns'] if str(d.emoji) == server.rx1]
+            rx2 = [d for d in message['rxns'] if str(d.emoji) == server.rx2]
 
             if(len(rx1) == 0 or len(rx2) == 0):
+                logging.info('Skipping due to no reactions.')
                 continue
             else:
                 rx1, rx2 = rx1[0], rx2[0]
@@ -143,6 +144,7 @@ class LeaderBoyt:
         self.session.commit()
         await self.bot.send_message(ctx.message.channel, 'Started bot configuration for this server.')
         await self.bot.send_message(ctx.message.channel, 'Use `!check` to check the status, and set them with `!set <param> <value>`.')
+        await self.bot.send_message(ctx.message.channel, 'If using emojis not in this server, use the fully qualified name, eg `<:downvote:335141916989456384>` while setting `up` and `down`.')
 
     @commands.command(pass_context=True, no_pm=True)
     async def check(self, ctx):
@@ -249,6 +251,11 @@ class LeaderBoyt:
             user = self.session.query(User).filter(User.id == memer[0]).first()
             user_list += str(ind) + ') ' + user.display_name + '\n'
             stat_list += str(memer[1]) + db_server.rx1 + ' ' + str(memer[2]) + db_server.rx2 + '\n'
+
+        if (user_list is ''):
+            user_list = 'No info. Populate the database with `!populate` for old memes.'
+        if (stat_list is ''):
+            stat_list = 'No info. Populate the database with `!populate` for old memes.'
         
         leaderboard_embed.add_field(name='Top Memers', value=user_list, inline=True)
         leaderboard_embed.add_field(name='Stats', value=stat_list, inline=True)
@@ -260,6 +267,11 @@ class LeaderBoyt:
             user = self.session.query(User).filter(User.id == memer[0]).first()
             user_list += str(ind) + ') ' + user.display_name + '\n'
             stat_list += str(memer[1]) + db_server.rx2 + ' ' + str(memer[2]) + db_server.rx1 + '\n'
+
+        if (user_list is ''):
+            user_list = 'No info. Populate the database with `!populate` for old memes.'
+        if (stat_list is ''):
+            stat_list = 'No info. Populate the database with `!populate` for old memes.'
         
         shitboard_embed.add_field(name='Shit Memers', value=user_list, inline=True)
         shitboard_embed.add_field(name='Stats', value=stat_list, inline=True)
@@ -334,11 +346,13 @@ class LeaderBoyt:
         current_server = message.server
 
         if (current_server is None or current_user is None):
+            logging.info('Missing info. Discarding.')
             return
         
         db_server = self.session.query(Server).filter(Server.discord_id == current_server.id).first()
         if (db_server is None): return
         if (not self.is_correct_channel_and_message(message, db_server)):
+            logging.info('Not in selected channel. Discarding.')
             return
 
         db_user = self.session.query(User).filter(User.discord_id == current_user.id).first()
@@ -399,10 +413,10 @@ class LeaderBoyt:
         if (db_message is None):
             content = self.get_message_content(current_message)
             db_message = Message(str(current_message.id), db_server, db_user, content, current_message.timestamp, 0, 0)
-        
-        if (reaction.emoji == db_server.rx1):
+
+        if (str(reaction.emoji) == db_server.rx1):
             db_message.rx1_count = reaction.count
-        elif (reaction.emoji == db_server.rx2):
+        elif (str(reaction.emoji) == db_server.rx2):
             db_message.rx2_count = reaction.count
 
         self.session.add(db_message)
@@ -412,11 +426,13 @@ class LeaderBoyt:
     def is_correct_channel_and_message(self, message, server):
         if (server.channel is str(message.channel.id)):
             return True
-
-        if (message.content.startswith("http") and "/" in message.content and "." in message.content and " " not in message.content):
+        
+        current_message = self.get_message_content(message)
+        if (current_message.startswith("http") and "/" in current_message and "." in current_message and " " not in current_message):
             # stolen from dino
             return True
 
+        logging.info('Failed channel and message check.')
         return False
 
     def get_message_content(self, message):
