@@ -230,38 +230,38 @@ class LeaderBoyt:
     async def stats(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
         
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_up'))
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_down'))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_up', 10))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_down', 10))
         logging.info('Generated stats.')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def top(self, ctx):
+    async def top(self, ctx, lim = 10):
         if (not await self.check_and_dismiss(ctx)): return
         
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_up'))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_up', int(lim)))
         logging.info('Get top memers.')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def bottom(self, ctx):
+    async def bottom(self, ctx, lim = 10):
         if (not await self.check_and_dismiss(ctx)): return
 
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_down'))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_down', int(lim)))
         logging.info('Get shit memers.')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def ptop(self, ctx):
+    async def ptop(self, ctx, lim = 10):
         if (not await self.check_and_dismiss(ctx)):
             return
 
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, '%_up'))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, '%_up', int(lim)))
         logging.info('Get Top % memers.')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def pbottom(self, ctx):
+    async def pbottom(self, ctx, lim = 10):
         if (not await self.check_and_dismiss(ctx)):
             return
 
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, '%_down'))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, '%_down', int(lim)))
         logging.info('Get Shit % memers.')
 
     @commands.command(pass_context=True, no_pm=True)
@@ -269,7 +269,7 @@ class LeaderBoyt:
         if (not await self.check_and_dismiss(ctx)): return
         logging.info('lol')
 
-    def generate_memer_board(self, ctx, method):
+    def generate_memer_board(self, ctx, method, lim):
         current_server = ctx.message.server
         db_server = self.session.query(Server).filter(Server.discord_id == str(current_server.id)).first()
         if (db_server is None):
@@ -278,18 +278,18 @@ class LeaderBoyt:
         heading = 'Memers'
 
         if (method == 'number_up'):
-            memers = self.session.query(Message.user_id, func.sum(Message.rx1_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx1_count).desc()).limit(10).all()
+            memers = self.session.query(Message.user_id, func.sum(Message.rx1_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx1_count).desc()).limit(lim).all()
             heading = 'Top ' + heading
         elif (method == 'number_down'):
-            memers = self.session.query(Message.user_id, func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx2_count).desc()).limit(10).all()
+            memers = self.session.query(Message.user_id, func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx2_count).desc()).limit(lim).all()
             heading = 'Shit ' + heading
         elif (method == '%_up'):
             memers = self.session.query(Message.user_id, cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float)), func.sum(Message.rx1_count), func.sum(
-                Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).desc()).limit(10).all()
+                Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).desc()).limit(lim).all()
             heading = 'Top ' + heading
         else:
             memers = self.session.query(Message.user_id, cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float)), func.sum(Message.rx1_count), func.sum(
-                Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).asc()).limit(10).all()
+                Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).asc()).limit(lim).all()
             heading = 'Shit ' + heading
         
         board_embed = discord.Embed(title='Leaderboard')
@@ -300,7 +300,7 @@ class LeaderBoyt:
 
         for ind, memer in enumerate(memers):
             user = self.session.query(User).filter(User.id == memer[0]).first()
-            user_list += str(ind) + ') ' + user.display_name + '\n'
+            user_list += str(ind + 1) + ') ' + user.display_name + '\n'
             if (method == 'number_up'):
                 stat_list += str(memer[1]) + ' ' + db_server.rx1 + '\n'
             elif (method == 'number_down'):
