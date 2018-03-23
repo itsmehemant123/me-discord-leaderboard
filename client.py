@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 with open('./config/auth.json') as data_file:
     auth = json.load(data_file)
 
-bot = commands.Bot(command_prefix=commands.when_mentioned_or('!'), description='Leaderboyt, yay!')
+bot = commands.Bot(command_prefix=commands.when_mentioned_or('!'), description='Leaderboyt, yay!', max_messages=5000)
 boyt = LeaderBoyt(bot)
 bot.add_cog(boyt)
 
@@ -24,3 +24,4 @@ async def on_message(message):
         await bot.process_commands(message)
 
 bot.run(auth['token'])
+boyt.shutdown()

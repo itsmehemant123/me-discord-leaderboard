@@ -19,10 +19,10 @@ class Message(Base):
     rx1_count = Column(Integer)
     rx2_count = Column(Integer)
     
-    def __init__(self, discord_id, server, author, content, created_at, rx1_count, rx2_count):
+    def __init__(self, discord_id, server, user, content, created_at, rx1_count, rx2_count):
         self.discord_id = discord_id
         self.server = server
-        self.author = author
+        self.user = user
         self.content = content
         self.created_at = created_at
         self.rx1_count = rx1_count

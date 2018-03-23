@@ -25,14 +25,32 @@ class LeaderBoyt:
         self.session = Session()
         self.bot = bot
         
-    def write_to_db(self, messages):
+    def parse_messages(self, messages, temp_cache):
         for message in messages:
-            rxns = message.reactions
-            user = message.author
-            print(rxns)
+            current_user = message.author
+            current_message = message.content
+            current_message_id = message.id
+            current_user_index = -1
+            current_user_in_db = False
 
+            if (current_message is None or current_message is ''):
+                current_message = '\n'.join([i['url'] for i in message.attachments])
 
-    async def download_messages(self, channel, limit, current_count, last_msg, msg_handle):
+            if (current_user.id not in temp_cache['user_keys']):
+                current_user_index = len(temp_cache['new_users'])
+                temp_cache['new_users'].append(current_user)
+                temp_cache['user_keys'].append(current_user.id)
+            else:
+                current_user_index = [i for i,d in enumerate(temp_cache['new_users']) if d['id'] == current_user.id]
+                if (len(current_user_index) == 0):
+                    current_user_in_db = True
+                else:
+                    current_user_index = current_user_index[0]
+            
+            if (message.id not in temp_cache['message_keys']):
+                temp_cache['new_messages'].append({'id': message.id, 'content': current_message, 'timestamp': message.timestamp, 'rxns': message.reactions, 'discord_id': current_message_id, 'user_index': current_user_index, 'user_in_db': current_user_in_db, 'author': current_user})
+            
+    async def download_messages(self, channel, limit, current_count, last_msg, msg_handle, temp_cache):
         before = None
         dwnld_limit = 100
 
@@ -50,7 +68,7 @@ class LeaderBoyt:
             last_msg = message
             msg_set.append(message)
 
-        self.write_to_db(msg_set)
+        self.parse_messages(msg_set, temp_cache)
 
         if (current_count % 1000 == 0):
             await self.bot.edit_message(msg_handle, 'Downloaded ' + str(current_count) + ' messages.')
@@ -60,7 +78,42 @@ class LeaderBoyt:
             await self.bot.edit_message(msg_handle, 'Finished downloading messages.')
             return current_count
         else:
-            return current_count + await self.download_messages(channel, limit, current_count, last_msg, msg_handle)
+            return current_count + await self.download_messages(channel, limit, current_count, last_msg, msg_handle, temp_cache)
+    
+    async def write_to_db(self, temp_cache):
+        new_users = []
+        user_cache = {}
+        server = temp_cache['server']
+
+        for user in temp_cache['new_users']:
+            new_user = User(user.id, user.name, user.display_name)
+            self.session.add(new_user)
+            new_users.append(new_user)
+        
+        for message in temp_cache['new_messages']:
+            if (message['user_in_db'] and message['author'].id not in user_cache):
+                msg_user = self.session.query(User).filter(User.discord_id == message['author'].id).first()
+                user_cache[message['author'].id] = msg_user
+            elif (message['user_in_db']):
+                msg_user = user_cache[message['author'].id]
+            else:
+                msg_user = new_users[message['user_index']]
+
+            rx1 = [d for d in message['rxns'] if d.emoji == server.rx1]
+            rx2 = [d for d in message['rxns'] if d.emoji == server.rx2]
+
+            if(len(rx1) == 0 or len(rx2) == 0):
+                continue
+            else:
+                rx1, rx2 = rx1[0], rx2[0]
+            
+            new_message = Message(message['id'], temp_cache['server'], msg_user, message['content'], message['timestamp'], rx1.count, rx2.count)
+            self.session.add(new_message)
+
+        self.session.commit()
+        await self.bot.send_message(temp_cache['ctx'].message.channel, 'Wrote messages to the database.')
+
+        logging.info('Writing to database')
 
     @commands.command(pass_context=True, no_pm=True)
     async def init(self, ctx):
@@ -148,12 +201,25 @@ class LeaderBoyt:
     async def populate(self, ctx):
         if (not await self.check_and_dismiss(ctx)):
             return
-        server = self.session.query(Server).filter(Server.discord_id == ctx.message.server.id).first()
-        channel = discord.utils.get(ctx.message.server.channels, id=server.channel)
+        db_server = self.session.query(Server).filter(Server.discord_id == ctx.message.server.id).first()
+        
+        temp_cache = {}
+        temp_cache['server'] = db_server
+        temp_cache['new_messages'] = []
+        temp_cache['new_users'] = []
+        temp_cache['ctx'] = ctx
+
+        temp_cache['message_keys'] = [key[0] for key in self.session.query(Message.discord_id).filter(Message.server_id == db_server.id).all()]
+        temp_cache['user_keys'] = [key[0] for key in self.session.query(User.discord_id).all()]
+        logging.info('MSG COUNT:' + str(len(temp_cache['message_keys'])))
+        logging.info('USR COUNT:' + str(len(temp_cache['user_keys'])))
+        
+        channel = discord.utils.get(ctx.message.server.channels, id=db_server.channel)
         logging.info('Issued download in: ' + channel.name + '.')
         resp = await self.bot.send_message(ctx.message.channel, 'Downloading messages.')
         
-        await self.download_messages(channel, 20000, 0, None, resp)
+        await self.download_messages(channel, 20000, 0, None, resp, temp_cache)
+        await self.write_to_db(temp_cache)
         logging.info('lol')
 
     @commands.command(pass_context=True, no_pm=True)
