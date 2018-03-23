@@ -230,30 +230,46 @@ class LeaderBoyt:
     async def stats(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
         
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, True))
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, False))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_up'))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_down'))
         logging.info('Generated stats.')
 
     @commands.command(pass_context=True, no_pm=True)
     async def top(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
         
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, True))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_up'))
         logging.info('Get top memers.')
 
     @commands.command(pass_context=True, no_pm=True)
     async def bottom(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
 
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, False))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_down'))
         logging.info('Get shit memers.')
+
+    @commands.command(pass_context=True, no_pm=True)
+    async def ptop(self, ctx):
+        if (not await self.check_and_dismiss(ctx)):
+            return
+
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, '%_up'))
+        logging.info('Get Top % memers.')
+
+    @commands.command(pass_context=True, no_pm=True)
+    async def pbottom(self, ctx):
+        if (not await self.check_and_dismiss(ctx)):
+            return
+
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, '%_down'))
+        logging.info('Get Shit % memers.')
 
     @commands.command(pass_context=True, no_pm=True)
     async def test(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
         logging.info('lol')
 
-    def generate_memer_board(self, ctx, is_asc):
+    def generate_memer_board(self, ctx, method):
         current_server = ctx.message.server
         db_server = self.session.query(Server).filter(Server.discord_id == str(current_server.id)).first()
         if (db_server is None):
@@ -261,11 +277,17 @@ class LeaderBoyt:
 
         heading = 'Memers'
 
-        if (is_asc):
-            memers = self.session.query(Message.user_id, func.sum(Message.rx1_count), func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx1_count).desc()).limit(10).all()
+        if (method == 'number_up'):
+            memers = self.session.query(Message.user_id, func.sum(Message.rx1_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx1_count).desc()).limit(10).all()
+            heading = 'Top ' + heading
+        elif (method == 'number_down'):
+            memers = self.session.query(Message.user_id, func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx2_count).desc()).limit(10).all()
+            heading = 'Shit ' + heading
+        elif (method == '%_up'):
+            memers = self.session.query(Message.user_id, func.sum(Message.rx1_count)/(func.sum(Message.rx1_count) + func.sum(Message.rx2_count)), func.sum(Message.rx1_count), func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((func.sum(Message.rx1_count)/(func.sum(Message.rx1_count) + func.sum(Message.rx2_count))).desc()).limit(10).all()
             heading = 'Top ' + heading
         else:
-            memers = self.session.query(Message.user_id, func.sum(Message.rx2_count), func.sum(Message.rx1_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx2_count).desc()).limit(10).all()
+            memers = self.session.query(Message.user_id, func.sum(Message.rx1_count)/(func.sum(Message.rx1_count) + func.sum(Message.rx2_count)), func.sum(Message.rx1_count), func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((func.sum(Message.rx1_count)/(func.sum(Message.rx1_count) + func.sum(Message.rx2_count))).asc()).limit(10).all()
             heading = 'Shit ' + heading
         
         board_embed = discord.Embed(title='Leaderboard')
@@ -277,10 +299,12 @@ class LeaderBoyt:
         for ind, memer in enumerate(memers):
             user = self.session.query(User).filter(User.id == memer[0]).first()
             user_list += str(ind) + ') ' + user.display_name + '\n'
-            if (is_asc):
+            if (method == 'number_up'):
                 stat_list += str(memer[1]) + ' ' + db_server.rx1 + '\n'
-            else:
+            elif (method == 'number_down'):
                 stat_list += str(memer[1]) + ' ' + db_server.rx2 + '\n'
+            else:
+                stat_list += str(memer[1]) + '\n'
         
         board_embed.add_field(name=heading, value=user_list, inline=True)
         board_embed.add_field(name='Stats', value=stat_list, inline=True)
