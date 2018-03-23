@@ -14,6 +14,7 @@ from models.servers import Server
 from models.users import User
 from models.status import Status
 from models.messages import Message
+from sqlalchemy import func
 import logging
 
 class LeaderBoyt:
@@ -163,7 +164,7 @@ class LeaderBoyt:
             server_configuration += 'Downvote amoji: ' + server.rx2 + '\n'
 
         await self.bot.send_message(ctx.message.channel, server_configuration)
-        logging.info('CONFIGSTATUS')
+        logging.info('Check status.')
     
     @commands.command(pass_context=True, no_pm=True)
     async def set(self, ctx, attribute: str, val: str):
@@ -195,10 +196,10 @@ class LeaderBoyt:
         self.session.commit()
         if (server_configuration is not ''): await self.bot.send_message(ctx.message.channel, server_configuration)
         else: await self.bot.send_message(ctx.message.channel, 'Finished configuring bot for this server.')
-        logging.info('SET')
+        logging.info('Set ' + attribute + ' as ' + val + '.')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def populate(self, ctx):
+    async def populate(self, ctx, count):
         if (not await self.check_and_dismiss(ctx)):
             return
         db_server = self.session.query(Server).filter(Server.discord_id == ctx.message.server.id).first()
@@ -218,25 +219,64 @@ class LeaderBoyt:
         logging.info('Issued download in: ' + channel.name + '.')
         resp = await self.bot.send_message(ctx.message.channel, 'Downloading messages.')
         
-        await self.download_messages(channel, 20000, 0, None, resp, temp_cache)
+        await self.download_messages(channel, int(count), 0, None, resp, temp_cache)
         await self.write_to_db(temp_cache)
-        logging.info('lol')
+        logging.info('Populate the database with data from ' + str(db_server.discord_id) + ':' + db_server.name)
 
     @commands.command(pass_context=True, no_pm=True)
     async def stats(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
-        logging.info('lol')
+        
+        current_server = ctx.message.server
+        db_server = self.session.query(Server).filter(Server.discord_id == str(current_server.id)).first()
+        if (db_server is None):
+            return
+        
+        dank_memers = self.session.query(Message.user_id, func.sum(Message.rx1_count), func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx1_count).desc()).limit(10).all()
+        shit_memers = self.session.query(Message.user_id, func.sum(Message.rx2_count), func.sum(Message.rx1_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx2_count).desc()).limit(10).all()
+
+        leaderboard_embed = discord.Embed(title='Leaderboard')
+        leaderboard_embed.set_author(name='LeaderBOYT', url='https://github.com/itsmehemant123/me-discord-leaderboard', icon_url='https://photos.hd92.me/images/2018/03/23/martin-shkreli.png')
+
+        shitboard_embed = discord.Embed(title='Shitboard')
+        shitboard_embed.set_author(name='LeaderBOYT', url='https://github.com/itsmehemant123/me-discord-leaderboard', icon_url='https://photos.hd92.me/images/2018/03/23/martin-shkreli.png')
+
+        user_list = ''
+        stat_list = ''
+
+        for ind, memer in enumerate(dank_memers):
+            user = self.session.query(User).filter(User.id == memer[0]).first()
+            user_list += str(ind) + ') ' + user.display_name + '\n'
+            stat_list += str(memer[1]) + db_server.rx1 + ' ' + str(memer[2]) + db_server.rx2 + '\n'
+        
+        leaderboard_embed.add_field(name='Top Memers', value=user_list, inline=True)
+        leaderboard_embed.add_field(name='Stats', value=stat_list, inline=True)
+
+        user_list = ''
+        stat_list = ''
+
+        for ind, memer in enumerate(shit_memers):
+            user = self.session.query(User).filter(User.id == memer[0]).first()
+            user_list += str(ind) + ') ' + user.display_name + '\n'
+            stat_list += str(memer[1]) + db_server.rx2 + ' ' + str(memer[2]) + db_server.rx1 + '\n'
+        
+        shitboard_embed.add_field(name='Shit Memers', value=user_list, inline=True)
+        shitboard_embed.add_field(name='Stats', value=stat_list, inline=True)
+
+        await self.bot.send_message(ctx.message.channel, embed=leaderboard_embed)
+        await self.bot.send_message(ctx.message.channel, embed=shitboard_embed)
+        logging.info('Generated stats.')
 
     @commands.command(pass_context=True, no_pm=True)
     async def top(self, ctx, channel: discord.Channel):
         if (not await self.check_and_dismiss(ctx)): return
         print(channel.id + ':' + channel.name)
-        logging.info('lol')
+        logging.info('Get top memers.')
 
     @commands.command(pass_context=True, no_pm=True)
     async def bottom(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
-        logging.info('lol')
+        logging.info('Get shit memers.')
 
     @commands.command(pass_context=True, no_pm=True)
     async def test(self, ctx):
@@ -244,7 +284,7 @@ class LeaderBoyt:
         logging.info('lol')
 
     async def readmeme(self, message):
-        logging.info('Writing incoming meme to db.')
+        logging.info('Processing incoming meme.')
         current_user = message.author
         current_server = message.server
 
@@ -253,6 +293,8 @@ class LeaderBoyt:
         
         db_server = self.session.query(Server).filter(Server.discord_id == current_server.id).first()
         if (db_server is None): return
+        if (not self.is_correct_channel_and_message(message, db_server)):
+            return
 
         db_user = self.session.query(User).filter(User.discord_id == current_user.id).first()
         if (db_user is None):
@@ -300,6 +342,8 @@ class LeaderBoyt:
             # Lol, gotem
             logging.info('Server not found, bot not configured for: ' + str(current_server.id) + ':' + current_server.name)
             return
+        if (not self.is_correct_channel_and_message(current_message, db_server)):
+            return
 
         db_user = self.session.query(User).filter(User.discord_id == str(current_user.id)).first()
         if (db_user is None):
@@ -319,6 +363,16 @@ class LeaderBoyt:
         self.session.add(db_message)
         self.session.commit()
         logging.info('Updated reactions.')
+
+    def is_correct_channel_and_message(self, message, server):
+        if (server.channel is str(message.channel.id)):
+            return True
+
+        if (message.content.startswith("http") and "/" in message.content and "." in message.content and " " not in message.content):
+            # stolen from dino
+            return True
+
+        return False
 
     def get_message_content(self, message):
         content = message.content

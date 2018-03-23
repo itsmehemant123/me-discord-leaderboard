@@ -24,7 +24,6 @@ async def on_message(message):
         if (message.content.startswith('!')):
             await bot.process_commands(message)
         else:
-            print('shut', message)
             await boyt.readmeme(message)
 
 @bot.event
