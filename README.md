@@ -20,7 +20,7 @@ pip install -r requirements.txt
 
 ```json
 {
-  "database_uri": "mongodb://<uname>:<pwd>@<host>:<port>/<auth_db>",
+  "database_uri": "mysql://<uname>:<pwd>@<host>:<port>/<auth_db>",
 }
 ```
 
@@ -29,7 +29,7 @@ pip install -r requirements.txt
 - Run the script with:
 
 ```bash
-python client.py
+python leaderboard-client.py
 ```
 
 ### Improvements

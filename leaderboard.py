@@ -275,6 +275,8 @@ class LeaderBoyt:
         if (db_server is None):
             return
 
+        if (lim > 10): lim = 10
+
         heading = 'Memers'
 
         if (method == 'number_up'):
