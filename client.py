@@ -21,7 +21,23 @@ async def on_ready():
 @bot.event
 async def on_message(message):
     if (message.author.id != bot.user.id):
-        await bot.process_commands(message)
+        if (message.content.startswith('!')):
+            await bot.process_commands(message)
+        else:
+            print('shut', message)
+            await boyt.readmeme(message)
+
+@bot.event
+async def on_reaction_add(reaction, user):
+    await boyt.add_reaction(reaction, user)
+
+@bot.event
+async def on_reaction_remove(reaction, user):
+    await boyt.remove_reaction(reaction, user)
+
+@bot.event
+async def on_reaction_clear(message, reactions):
+    await boyt.clear_reaction(message, reactions)
 
 bot.run(auth['token'])
 boyt.shutdown()

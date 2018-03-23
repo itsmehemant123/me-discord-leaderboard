@@ -140,7 +140,7 @@ class LeaderBoyt:
         
         self.session.commit()
         await self.bot.send_message(ctx.message.channel, 'Started bot configuration for this server.')
-        await self.bot.send_message(ctx.message.channel, 'Use `!configstatus` to check the status, and set them with `!set <param> <value>`.')
+        await self.bot.send_message(ctx.message.channel, 'Use `!check` to check the status, and set them with `!set <param> <value>`.')
 
     @commands.command(pass_context=True, no_pm=True)
     async def check(self, ctx):
@@ -243,12 +243,89 @@ class LeaderBoyt:
         if (not await self.check_and_dismiss(ctx)): return
         logging.info('lol')
 
+    async def readmeme(self, message):
+        logging.info('Writing incoming meme to db.')
+        current_user = message.author
+        current_server = message.server
+
+        if (current_server is None or current_user is None):
+            return
+        
+        db_server = self.session.query(Server).filter(Server.discord_id == current_server.id).first()
+        if (db_server is None): return
+
+        db_user = self.session.query(User).filter(User.discord_id == current_user.id).first()
+        if (db_user is None):
+            db_user = User(current_user.id, current_user.name, current_user.display_name)
+            self.session.add(db_user)
+
+        content = self.get_message_content(message)
+
+        self.session.add(Message(message.id, db_server, db_user, content, message.timestamp, 0, 0))
+        self.session.commit()
+        logging.info('Wrote new meme.')
+
+    async def add_reaction(self, reaction, user):
+        self.update_reactions(reaction, user)
+        logging.info('Add reaction.')
+
+    async def remove_reaction(self, reaction, user):
+        self.update_reactions(reaction, user)
+        logging.info('Remove reaction.')
+
+    async def clear_reaction(self, message, reactions):
+        db_message = self.session.query(Message).filter(Message.discord_id == str(message.id)).first()
+        if (db_message is None):
+            return
+        
+        db_message.rx1_count = 0
+        db_message.rx2_count = 0
+        self.session.commit()
+        logging.info('Clear reaction.')
+
     async def check_and_dismiss(self, ctx, is_being_configured=False):
         is_set = self.check_status(ctx.message.server.id, is_being_configured)
         if (not is_set): 
-            await self.bot.send_message(ctx.message.channel, 'Bot not configured yet. Run `!configure` to get started.')
+            await self.bot.send_message(ctx.message.channel, 'Bot not configured yet. Run `!init` to get started.')
         
         return is_set
+
+    def update_reactions(self, reaction, user):
+        current_user = user
+        current_message = reaction.message
+        current_server = reaction.message.server
+
+        db_server = self.session.query(Server).filter(Server.discord_id == str(current_server.id)).first()
+        if (db_server is None):
+            # Lol, gotem
+            logging.info('Server not found, bot not configured for: ' + str(current_server.id) + ':' + current_server.name)
+            return
+
+        db_user = self.session.query(User).filter(User.discord_id == str(current_user.id)).first()
+        if (db_user is None):
+            db_user = User(current_user.id, current_user.name, current_user.display_name)
+            self.session.add(db_user)
+        
+        db_message = self.session.query(Message).filter(Message.discord_id == str(current_message.id)).first()
+        if (db_message is None):
+            content = self.get_message_content(current_message)
+            db_message = Message(str(current_message.id), db_server, db_user, content, current_message.timestamp, 0, 0)
+        
+        if (reaction.emoji == db_server.rx1):
+            db_message.rx1_count = reaction.count
+        elif (reaction.emoji == db_server.rx2):
+            db_message.rx2_count = reaction.count
+
+        self.session.add(db_message)
+        self.session.commit()
+        logging.info('Updated reactions.')
+
+    def get_message_content(self, message):
+        content = message.content
+        if (content is '' or content is None):
+            content = '\n'.join([i['url'] for i in message.attachments])
+
+        return content
 
     def check_status(self, server_id, is_being_configured):
         status = self.session.query(Status).join(Server).filter(Server.discord_id == server_id).first()

@@ -10,8 +10,8 @@ class Status(Base):
 
     id = Column(Integer, primary_key=True)
     server_status = Column(Integer)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    server_id = Column(Integer, ForeignKey('servers.id'))
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    server_id = Column(Integer, ForeignKey('servers.id'), nullable=False)
     user = relationship(User)
     server = relationship(Server)
 
