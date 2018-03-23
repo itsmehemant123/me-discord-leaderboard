@@ -306,7 +306,7 @@ class LeaderBoyt:
             elif (method == 'number_down'):
                 stat_list += str(memer[1]) + ' ' + db_server.rx2 + '\n'
             else:
-                stat_list += '%.2f' % memer[1] + '% ' + db_server.rx1 + '/' + db_server.rx2 + '\n'
+                stat_list += '%.2f' % (memer[1] * 100) + '% ' + db_server.rx1 + '/' + db_server.rx2 + '\n'
         
         board_embed.add_field(name=heading, value=user_list, inline=True)
         board_embed.add_field(name='Stats', value=stat_list, inline=True)
