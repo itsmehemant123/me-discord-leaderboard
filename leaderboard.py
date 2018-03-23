@@ -14,7 +14,7 @@ from models.servers import Server
 from models.users import User
 from models.status import Status
 from models.messages import Message
-from sqlalchemy import func
+from sqlalchemy import func, cast, Float
 import logging
 
 class LeaderBoyt:
@@ -284,10 +284,12 @@ class LeaderBoyt:
             memers = self.session.query(Message.user_id, func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx2_count).desc()).limit(10).all()
             heading = 'Shit ' + heading
         elif (method == '%_up'):
-            memers = self.session.query(Message.user_id, func.sum(Message.rx1_count)/(func.sum(Message.rx1_count) + func.sum(Message.rx2_count)), func.sum(Message.rx1_count), func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((func.sum(Message.rx1_count)/(func.sum(Message.rx1_count) + func.sum(Message.rx2_count))).desc()).limit(10).all()
+            memers = self.session.query(Message.user_id, cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float)), func.sum(Message.rx1_count), func.sum(
+                Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).desc()).limit(10).all()
             heading = 'Top ' + heading
         else:
-            memers = self.session.query(Message.user_id, func.sum(Message.rx1_count)/(func.sum(Message.rx1_count) + func.sum(Message.rx2_count)), func.sum(Message.rx1_count), func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((func.sum(Message.rx1_count)/(func.sum(Message.rx1_count) + func.sum(Message.rx2_count))).asc()).limit(10).all()
+            memers = self.session.query(Message.user_id, cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float)), func.sum(Message.rx1_count), func.sum(
+                Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).asc()).limit(10).all()
             heading = 'Shit ' + heading
         
         board_embed = discord.Embed(title='Leaderboard')
@@ -304,7 +306,7 @@ class LeaderBoyt:
             elif (method == 'number_down'):
                 stat_list += str(memer[1]) + ' ' + db_server.rx2 + '\n'
             else:
-                stat_list += str(memer[1]) + '\n'
+                stat_list += '%.2f' % memer[1] + '% ' + db_server.rx1 + '/' + db_server.rx2 + '\n'
         
         board_embed.add_field(name=heading, value=user_list, inline=True)
         board_embed.add_field(name='Stats', value=stat_list, inline=True)
