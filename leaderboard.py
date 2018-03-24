@@ -4,6 +4,7 @@ import sys
 import json
 import time
 import discord
+from datetime import datetime, timedelta
 from string import ascii_letters
 from os import listdir
 from os.path import isfile, join
@@ -34,7 +35,7 @@ class LeaderBoyt:
             current_user_index = -1
             current_user_in_db = False
 
-            if (current_message is None or current_message is ''):
+            if (current_message is None or current_message == ''):
                 current_message = '\n'.join([i['url'] for i in message.attachments])
 
             if (current_user.id not in temp_cache['user_keys']):
@@ -174,7 +175,7 @@ class LeaderBoyt:
         if (not await self.check_and_dismiss(ctx, True)): return
 
         status = self.session.query(Status).join(Server).filter(Server.discord_id == ctx.message.server.id).first()
-        if (status.user.discord_id is not ctx.message.author.id and status.server_status is not 2):
+        if (not(status.user.discord_id == ctx.message.author.id) and not(status.server_status == 2)):
             self.bot.send_message(ctx.message.channel, 'Only the user (' + status.user.display_name + ') who started the configuration can set.')
 
         server_configuration = ''
@@ -197,7 +198,8 @@ class LeaderBoyt:
             status.server_status = 1
 
         self.session.commit()
-        if (server_configuration is not ''): await self.bot.send_message(ctx.message.channel, server_configuration)
+        if (not(server_configuration == '')):
+            await self.bot.send_message(ctx.message.channel, server_configuration)
         else: await self.bot.send_message(ctx.message.channel, 'Finished configuring bot for this server.')
         logging.info('Set ' + attribute + ' as ' + val + '.')
 
@@ -230,38 +232,54 @@ class LeaderBoyt:
     async def stats(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
         
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_up', 10))
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_down', 10))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_up', 10, False))
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_down', 10, False))
         logging.info('Generated stats.')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def top(self, ctx, lim = 10):
+    async def top(self, ctx, lim: str = '10'):
         if (not await self.check_and_dismiss(ctx)): return
         
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_up', int(lim)))
+        is_span = False
+        if (not self.is_int(lim)):
+            is_span = True
+        
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_up', lim, is_span))
         logging.info('Get top memers.')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def bottom(self, ctx, lim = 10):
+    async def bottom(self, ctx, lim: str = '10'):
         if (not await self.check_and_dismiss(ctx)): return
 
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_down', int(lim)))
+        is_span = False
+        if (not self.is_int(lim)):
+            is_span = True
+
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_down', lim, is_span))
         logging.info('Get shit memers.')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def ptop(self, ctx, lim = 10):
+    async def ptop(self, ctx, lim: str = '10'):
         if (not await self.check_and_dismiss(ctx)):
             return
 
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, '%_up', int(lim)))
+        is_span = False
+        if (not self.is_int(lim)):
+            is_span = True
+
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, '%_up', lim, is_span))
         logging.info('Get Top % memers.')
 
     @commands.command(pass_context=True, no_pm=True)
-    async def pbottom(self, ctx, lim = 10):
+    async def pbottom(self, ctx, lim: str = '10'):
         if (not await self.check_and_dismiss(ctx)):
             return
 
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, '%_down', int(lim)))
+        is_span = False
+        if (not self.is_int(lim)):
+            is_span = True
+
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, '%_down', lim, is_span))
         logging.info('Get Shit % memers.')
 
     @commands.command(pass_context=True, no_pm=True)
@@ -269,29 +287,45 @@ class LeaderBoyt:
         if (not await self.check_and_dismiss(ctx)): return
         logging.info('lol')
 
-    def generate_memer_board(self, ctx, method, lim):
+    def generate_memer_board(self, ctx, method, lim, span):
         current_server = ctx.message.server
         db_server = self.session.query(Server).filter(Server.discord_id == str(current_server.id)).first()
         if (db_server is None):
             return
 
-        if (lim > 10): lim = 10
+        message_count = 10
+        start_date = datetime.now()
+
+        if (not span):
+            message_count = int(lim)
+            start_date = datetime.min
+        elif (lim == '1d'):
+            start_date = start_date - timedelta(hours = 24)
+        elif (lim == '1w'):
+            start_date = start_date - timedelta(weeks = 1)
+        else:
+            start_date = start_date - timedelta(weeks = 4)
+
+        if (message_count > 10):
+            message_count = 10  # Until rich embeds are switched for generic messages
 
         heading = 'Memers'
 
         if (method == 'number_up'):
-            memers = self.session.query(Message.user_id, func.sum(Message.rx1_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx1_count).desc()).limit(lim).all()
+            memers = self.session.query(Message.user_id, func.sum(Message.rx1_count)).filter(Message.server_id == db_server.id, Message.created_at > start_date).group_by(
+                Message.user_id).order_by(func.sum(Message.rx1_count).desc()).limit(message_count).all()
             heading = 'Top ' + heading
         elif (method == 'number_down'):
-            memers = self.session.query(Message.user_id, func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by(func.sum(Message.rx2_count).desc()).limit(lim).all()
+            memers = self.session.query(Message.user_id, func.sum(Message.rx2_count)).filter(Message.server_id == db_server.id, Message.created_at > start_date).group_by(
+                Message.user_id).order_by(func.sum(Message.rx2_count).desc()).limit(message_count).all()
             heading = 'Shit ' + heading
         elif (method == '%_up'):
             memers = self.session.query(Message.user_id, cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float)), func.sum(Message.rx1_count), func.sum(
-                Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).desc()).limit(lim).all()
+                Message.rx2_count)).filter(Message.server_id == db_server.id, Message.created_at > start_date).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).desc()).limit(message_count).all()
             heading = 'Top ' + heading
         else:
             memers = self.session.query(Message.user_id, cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float)), func.sum(Message.rx1_count), func.sum(
-                Message.rx2_count)).filter(Message.server_id == db_server.id).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).asc()).limit(lim).all()
+                Message.rx2_count)).filter(Message.server_id == db_server.id, Message.created_at > start_date).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).asc()).limit(message_count).all()
             heading = 'Shit ' + heading
         
         board_embed = discord.Embed(title='Leaderboard')
@@ -399,20 +433,19 @@ class LeaderBoyt:
         logging.info('Updated reactions.')
 
     def is_correct_channel_and_message(self, message, server):
-        if (server.channel is str(message.channel.id)):
-            return True
+        if (not (server.channel == str(message.channel.id))):
+            return False
         
         current_message = self.get_message_content(message)
-        if (current_message.startswith("http") and "/" in current_message and "." in current_message and " " not in current_message):
+        if (not (current_message.startswith("http") and "/" in current_message and "." in current_message and " " not in current_message)):
             # stolen from dino
-            return True
+            return False
 
-        logging.info('Failed channel and message check.')
-        return False
+        return True
 
     def get_message_content(self, message):
         content = message.content
-        if (content is '' or content is None):
+        if (content == '' or content is None):
             content = '\n'.join([i['url'] for i in message.attachments])
 
         return content
@@ -423,9 +456,17 @@ class LeaderBoyt:
         if (status is None): return False
 
         if (is_being_configured): return True
-        if (status.server_status is not 2): return False
+        if (not(status.server_status == 2)):
+            return False
         
         return True
+
+    def is_int(self, val):
+        try:
+            int(val)
+            return True
+        except ValueError:
+            return False
 
     def shutdown(self):
         self.session.close()
