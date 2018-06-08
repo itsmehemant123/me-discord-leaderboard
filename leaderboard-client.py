@@ -38,5 +38,9 @@ async def on_reaction_remove(reaction, user):
 async def on_reaction_clear(message, reactions):
     await boyt.clear_reaction(message, reactions)
 
+@bot.event
+async def on_member_update(before, after):
+    boyt.update_nickname(before, after)
+
 bot.run(auth['token'])
 boyt.shutdown()

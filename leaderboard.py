@@ -15,6 +15,7 @@ from models.servers import Server
 from models.users import User
 from models.status import Status
 from models.messages import Message
+from models.nicknames import Nickname
 from sqlalchemy import func, cast, Float
 import logging
 
@@ -474,15 +475,43 @@ class LeaderBoyt:
         if (db_message is None):
             content = self.get_message_content(current_message)
             db_message = Message(str(current_message.id), db_server, db_user, content, current_message.timestamp, 0, 0)
+            self.session.add(db_message)
 
         if (str(reaction.emoji) == db_server.rx1):
             db_message.rx1_count = reaction.count
         elif (str(reaction.emoji) == db_server.rx2):
             db_message.rx2_count = reaction.count
-
-        self.session.add(db_message)
+        
         self.session.commit()
         logging.info('Updated reactions.')
+    
+    def update_nickname(self, before, after):
+        if (after.nick is None):
+            logging.info('Not a nick update, skipping.')
+            return
+        db_user = self.session.query(User).filter(User.discord_id == before.id).first()
+        db_server = self.session.query(Server).filter(Server.discord_id == before.server.id).first()
+        
+        if (db_server is None):
+            logging.info('Update nick attempt on uninitialized server, aborting.')
+            return
+        
+        if (db_user is None):
+            new_user = User(after.id, after.name,
+                            after.nick)
+            self.session.add(new_user)
+            db_user = new_user
+
+        db_nickname = self.session.query(Nickname).filter(
+            Nickname.user_id == db_user.id, Nickname.server_id == db_server.id).first()
+        if (db_nickname is None):
+            new_nick = Nickname(db_user, db_server, after.display_name)
+            self.session.add(new_nick)
+        else:
+            db_nickname.display_name = after.display_name
+
+        self.session.commit()
+        logging.info('Updated nickname')
 
     def is_correct_channel_and_message(self, message, server):
         if (not (server.channel == str(message.channel.id))):
