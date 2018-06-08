@@ -329,13 +329,7 @@ class LeaderBoyt:
         db_user = self.session.query(User).filter(
             User.discord_id == target).first()
         db_server = self.session.query(Server).filter(Server.discord_id == ctx.message.server.id).first()
-        db_nick = self.session.query(Nickname).filter(Nickname.user_id == db_user.id, Nickname.server_id == db_server.id).first()
         
-        if (db_nick is None or db_nick.display_name == ''):
-            nickname = db_user.display_name
-        else:
-            nickname = db_nick.display_name
-
         if (db_server is None):
             await self.bot.send_message(ctx.message.channel, 'Bot not initialized in server.')
             return
@@ -347,6 +341,14 @@ class LeaderBoyt:
             self.session.add(db_user)
             self.session.commit()
             return
+        
+        db_nick = self.session.query(Nickname).filter(
+            Nickname.user_id == db_user.id, Nickname.server_id == db_server.id).first()
+
+        if (db_nick is None or db_nick.display_name == ''):
+            nickname = db_user.display_name
+        else:
+            nickname = db_nick.display_name
         
         total_doots = self.session.query(func.sum(Message.rx1_count), func.sum(Message.rx2_count), func.avg(Message.rx1_count), func.avg(Message.rx2_count)).filter(
             Message.server_id == db_server.id, Message.user_id == db_user.id).group_by(Message.user_id).first()
