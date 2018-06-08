@@ -127,6 +127,12 @@ class LeaderBoyt:
 
         db_user = self.session.query(User).filter(User.discord_id == discord_user.id).first()
         db_server = self.session.query(Server).filter(Server.discord_id == discord_server.id).first()
+        db_status = self.session.query(Status).join(Server).filter(Server.discord_id == ctx.message.server.id).first()
+
+        if ((db_status is not None and db_status.server_status == 2) and not (ctx.message.author.id == db_status.user.discord_id)):
+            logging.info('Attemted to init the server, aborting')
+            await self.bot.send_message(ctx.message.channel, 'Only ' + db_status.user.user_name + ' can initialize the bot again')
+            return
 
         if (db_user is None):
             new_user = User(discord_user.id, discord_user.name, discord_user.display_name)
@@ -177,6 +183,14 @@ class LeaderBoyt:
         status = self.session.query(Status).join(Server).filter(Server.discord_id == ctx.message.server.id).first()
         if (not(status.user.discord_id == ctx.message.author.id) and not(status.server_status == 2)):
             self.bot.send_message(ctx.message.channel, 'Only the user (' + status.user.display_name + ') who started the configuration can set.')
+            return
+
+        db_status = self.session.query(Status).join(Server).filter(
+            Server.discord_id == ctx.message.server.id).first()
+        if ((db_status is not None and db_status.server_status == 2) and not (ctx.message.author.id == db_status.user.discord_id)):
+            logging.info('Attemted to init the server, aborting')
+            await self.bot.send_message(ctx.message.channel, 'Only ' + db_status.user.user_name + ' can initialize the bot again')
+            return
 
         server_configuration = ''
         server = self.session.query(Server).filter(Server.discord_id == ctx.message.server.id).first()
@@ -283,6 +297,30 @@ class LeaderBoyt:
         logging.info('Get Shit % memers.')
 
     @commands.command(pass_context=True, no_pm=True)
+    async def atop(self, ctx, lim: str = '10'):
+        if (not await self.check_and_dismiss(ctx)):
+            return
+
+        is_span = False
+        if (not self.is_int(lim)):
+            is_span = True
+
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'avg_up', lim, is_span))
+        logging.info('Get Top avg memers.')
+
+    @commands.command(pass_context=True, no_pm=True)
+    async def abottom(self, ctx, lim: str = '10'):
+        if (not await self.check_and_dismiss(ctx)):
+            return
+
+        is_span = False
+        if (not self.is_int(lim)):
+            is_span = True
+
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'avg_down', lim, is_span))
+        logging.info('Get Shit avg memers.')
+
+    @commands.command(pass_context=True, no_pm=True)
     async def test(self, ctx):
         if (not await self.check_and_dismiss(ctx)): return
         logging.info('lol')
@@ -323,10 +361,18 @@ class LeaderBoyt:
             memers = self.session.query(Message.user_id, cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float)), func.sum(Message.rx1_count), func.sum(
                 Message.rx2_count)).filter(Message.server_id == db_server.id, Message.created_at > start_date).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).desc()).limit(message_count).all()
             heading = 'Top ' + heading
-        else:
+        elif (method == '%_down'):
             memers = self.session.query(Message.user_id, cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float)), func.sum(Message.rx1_count), func.sum(
                 Message.rx2_count)).filter(Message.server_id == db_server.id, Message.created_at > start_date).group_by(Message.user_id).order_by((cast(func.sum(Message.rx1_count), Float) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float))).asc()).limit(message_count).all()
             heading = 'Shit ' + heading
+        elif (method == 'avg_up'):
+            memers = self.session.query(Message.user_id, func.avg(Message.rx1_count)).filter(Message.server_id == db_server.id, Message.created_at > start_date).group_by(
+                Message.user_id).order_by(func.avg(Message.rx1_count).desc()).limit(message_count).all()
+            heading = 'Top' + heading + ' by average'
+        else: #if (method == 'avg_down'):
+            memers = self.session.query(Message.user_id, func.avg(Message.rx2_count)).filter(Message.server_id == db_server.id, Message.created_at > start_date).group_by(
+                Message.user_id).order_by(func.avg(Message.rx2_count).desc()).limit(message_count).all()
+            heading = 'Shit' + heading + ' by average'
         
         board_embed = discord.Embed(title='Leaderboard')
         board_embed.set_author(name='LeaderBOYT', url='https://github.com/itsmehemant123/me-discord-leaderboard', icon_url='https://photos.hd92.me/images/2018/03/23/martin-shkreli.png')
@@ -341,8 +387,14 @@ class LeaderBoyt:
                 stat_list += str(memer[1]) + ' ' + db_server.rx1 + '\n'
             elif (method == 'number_down'):
                 stat_list += str(memer[1]) + ' ' + db_server.rx2 + '\n'
-            else:
+            elif (method == '%_up' or method == '%_down'):
                 stat_list += '%.2f' % (memer[1] * 100) + '% ' + db_server.rx1 + '/' + db_server.rx2 + '\n'
+            elif (method == 'avg_up'):
+                stat_list += '%.2f' % (memer[1]) + \
+                    ' ' + db_server.rx1 + '\n'
+            else:
+                stat_list += '%.2f' % (memer[1]) + \
+                    ' ' + db_server.rx2 + '\n'
         
         board_embed.add_field(name=heading, value=user_list, inline=True)
         board_embed.add_field(name='Stats', value=stat_list, inline=True)
@@ -371,7 +423,7 @@ class LeaderBoyt:
 
         content = self.get_message_content(message)
 
-        self.session.add(Message(message.id, db_server, db_user, content, message.timestamp, 0, 0))
+        self.session.add(Message(message.id, db_server, db_user, content, message.timestamp, 1, 1))
         self.session.commit()
         logging.info('Wrote new meme.')
 
