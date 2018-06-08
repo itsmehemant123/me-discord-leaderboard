@@ -244,14 +244,6 @@ class LeaderBoyt:
         logging.info('Populate the database with data from ' + str(db_server.discord_id) + ':' + db_server.name)
 
     @commands.command(pass_context=True, no_pm=True)
-    async def stats(self, ctx):
-        if (not await self.check_and_dismiss(ctx)): return
-        
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_up', 10, False))
-        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'number_down', 10, False))
-        logging.info('Generated stats.')
-
-    @commands.command(pass_context=True, no_pm=True)
     async def top(self, ctx, lim: str = '10'):
         if (not await self.check_and_dismiss(ctx)): return
         
@@ -320,6 +312,59 @@ class LeaderBoyt:
 
         await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'avg_down', lim, is_span))
         logging.info('Get Shit avg memers.')
+    
+    @commands.command(pass_context=True, no_pm=True)
+    async def stats(self, ctx, target: str = ''):
+        if (not await self.check_and_dismiss(ctx)):
+            return
+        
+        if (target is ''):
+            logging.info('CHeck for self')
+            target = ctx.message.author.id
+        else:
+            logging.info('Checking for user ' + target)
+            target = re.sub('[<@!>]', '', target)
+        
+        logging.info('Target: ' + target)
+        db_user = self.session.query(User).filter(
+            User.discord_id == target).first()
+        db_server = self.session.query(Server).filter(Server.discord_id == ctx.message.server.id).first()
+        db_nick = self.session.query(Nickname).filter(Nickname.user_id == db_user.id, Nickname.server_id == db_server.id).first()
+        
+        if (db_nick is None or db_nick.display_name == ''):
+            nickname = db_user.display_name
+        else:
+            nickname = db_nick.display_name
+
+        if (db_server is None):
+            await self.bot.send_message(ctx.message.channel, 'Bot not initialized in server.')
+            return
+        
+        if (db_user is None):
+            await self.bot.send_message(ctx.message.channel, 'No data on user.')
+            db_user = User(ctx.message.author.id, ctx.message.author.name,
+                           ctx.message.author.display_name)
+            self.session.add(db_user)
+            self.session.commit()
+            return
+        
+        total_doots = self.session.query(func.sum(Message.rx1_count), func.sum(Message.rx2_count), func.avg(Message.rx1_count), func.avg(Message.rx2_count)).filter(
+            Message.server_id == db_server.id, Message.user_id == db_user.id).group_by(Message.user_id).first()
+        total_memes = self.session.query(Message.id).filter(Message.server_id == db_server.id, Message.user_id == db_user.id).count()
+        
+        board_embed = discord.Embed(title='Statistics for ' + nickname + ' for a total of ' + str(total_memes) + ' memes')
+        board_embed.set_author(name='LeaderBOYT', url='https://github.com/itsmehemant123/me-discord-leaderboard',
+                               icon_url='https://photos.hd92.me/images/2018/03/23/martin-shkreli.png')
+
+        metric_list = 'Total Upvotes\nTotal Downvotes\nAverage # of Upvotes\nAverage # of Downvotes\n%ge of Upvotes'
+        stat_list = str(total_doots[0]) + '\n' + \
+            str(total_doots[1]) + '\n' + '%.2f' % (total_doots[2]) + '\n' + \
+            '%.2f' % (total_doots[3]) + '\n' + '%.2f' % ((total_doots[0]/(total_doots[0] + total_doots[1])) * 100) + ' %'
+
+        board_embed.add_field(name='Metric', value=metric_list, inline=True)
+        board_embed.add_field(name='Stats', value=stat_list, inline=True)
+        await self.bot.send_message(ctx.message.channel, embed=board_embed)
+        logging.info('Checking stats.')
 
     @commands.command(pass_context=True, no_pm=True)
     async def test(self, ctx):
@@ -383,7 +428,12 @@ class LeaderBoyt:
 
         for ind, memer in enumerate(memers):
             user = self.session.query(User).filter(User.id == memer[0]).first()
-            user_list += str(ind + 1) + ') ' + user.display_name + '\n'
+            nick = self.session.query(Nickname).filter(Nickname.user_id == memer[0], Nickname.server_id == db_server.id).first()
+            if (nick is None or nick.display_name == ''):
+                nickname = user.display_name
+            else:
+                nickname = nick.display_name
+            user_list += str(ind + 1) + ') ' + nickname + '\n'
             if (method == 'number_up'):
                 stat_list += str(memer[1]) + ' ' + db_server.rx1 + '\n'
             elif (method == 'number_down'):
