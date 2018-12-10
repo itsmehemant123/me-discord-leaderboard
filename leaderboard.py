@@ -6,6 +6,7 @@ import time
 import discord
 from datetime import datetime, timedelta
 from string import ascii_letters
+from scipy.stats import beta
 from os import listdir
 from os.path import isfile, join
 from discord.ext import commands
@@ -25,6 +26,7 @@ class LeaderBoyt:
         logging.basicConfig(level=logging.INFO)
         Base.metadata.create_all(engine, checkfirst=True)
 
+        self.stat_dist_data = None
         self.session = Session()
         self.bot = bot
         
@@ -312,6 +314,30 @@ class LeaderBoyt:
 
         await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'avg_down', lim, is_span))
         logging.info('Get Shit avg memers.')
+
+    @commands.command(pass_context=True, no_pm=True)
+    async def btop(self, ctx, lim: str = '10'):
+        if (not await self.check_and_dismiss(ctx)):
+            return
+
+        is_span = False
+        if (not self.is_int(lim)):
+            is_span = True
+
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'beta_top', lim, is_span))
+        logging.info('Get Top memers by beta dist.')
+    
+    @commands.command(pass_context=True, no_pm=True)
+    async def bbottom(self, ctx, lim: str = '10'):
+        if (not await self.check_and_dismiss(ctx)):
+            return
+
+        is_span = False
+        if (not self.is_int(lim)):
+            is_span = True
+
+        await self.bot.send_message(ctx.message.channel, embed=self.generate_memer_board(ctx, 'beta_down', lim, is_span))
+        logging.info('Get Shit memers by beta dist.')
     
     @commands.command(pass_context=True, no_pm=True)
     async def stats(self, ctx, target: str = ''):
@@ -389,8 +415,10 @@ class LeaderBoyt:
             start_date = start_date - timedelta(hours = 24)
         elif (lim == '1w'):
             start_date = start_date - timedelta(weeks = 1)
-        else:
+        elif (lim == '1m'):
             start_date = start_date - timedelta(weeks = 4)
+        else:
+            start_date = start_date - timedelta(weeks = 52)
 
         if (message_count > 10):
             message_count = 10  # Until rich embeds are switched for generic messages
@@ -416,11 +444,23 @@ class LeaderBoyt:
         elif (method == 'avg_up'):
             memers = self.session.query(Message.user_id, func.avg(Message.rx1_count)).filter(Message.server_id == db_server.id, Message.created_at > start_date).group_by(
                 Message.user_id).order_by(func.avg(Message.rx1_count).desc()).limit(message_count).all()
-            heading = 'Top' + heading + ' by average'
-        else: #if (method == 'avg_down'):
+            heading = 'Top ' + heading + ' by average'
+        elif (method == 'avg_down'):
             memers = self.session.query(Message.user_id, func.avg(Message.rx2_count)).filter(Message.server_id == db_server.id, Message.created_at > start_date).group_by(
                 Message.user_id).order_by(func.avg(Message.rx2_count).desc()).limit(message_count).all()
-            heading = 'Shit' + heading + ' by average'
+            heading = 'Shit ' + heading + ' by average'
+        elif (method == 'beta_top'):
+            if (self.stat_dist_data is None or (datetime.now() - self.stat_dist_data['timestamp']).days > 14):
+                self.refresh_beta_dist(db_server)
+            memers = self.session.query(Message.user_id, (cast(func.sum(Message.rx1_count), Float) + self.stat_dist_data['alpha']) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float) + self.stat_dist_data['alpha'] + self.stat_dist_data['beta'])).filter(
+                Message.server_id == db_server.id, Message.created_at > start_date).group_by(Message.user_id).order_by(((cast(func.sum(Message.rx1_count), Float) + self.stat_dist_data['alpha']) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float) + self.stat_dist_data['alpha'] + self.stat_dist_data['beta'])).desc()).limit(message_count).all()
+            heading = 'Top ' + heading + ' by beta distribution'
+        else: # if (method == 'beta_down'):
+            if (self.stat_dist_data is None or (datetime.now() - self.stat_dist_data['timestamp']).days > 14):
+                self.refresh_beta_dist(db_server)
+            memers = self.session.query(Message.user_id, (cast(func.sum(Message.rx1_count), Float) + self.stat_dist_data['alpha']) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float) + self.stat_dist_data['alpha'] + self.stat_dist_data['beta'])).filter(
+                Message.server_id == db_server.id, Message.created_at > start_date).group_by(Message.user_id).order_by(((cast(func.sum(Message.rx1_count), Float) + self.stat_dist_data['alpha']) / (cast(func.sum(Message.rx1_count), Float) + cast(func.sum(Message.rx2_count), Float) + self.stat_dist_data['alpha'] + self.stat_dist_data['beta'])).asc()).limit(message_count).all()
+            heading = 'Shit ' + heading + ' by beta distribution'
         
         board_embed = discord.Embed(title='Leaderboard')
         board_embed.set_author(name='LeaderBOYT', url='https://github.com/itsmehemant123/me-discord-leaderboard', icon_url='https://photos.hd92.me/images/2018/03/23/martin-shkreli.png')
@@ -435,6 +475,10 @@ class LeaderBoyt:
                 nickname = user.display_name
             else:
                 nickname = nick.display_name
+            
+            if (nickname is None):
+                nickname = '<banned user>'
+            
             user_list += str(ind + 1) + ') ' + nickname + '\n'
             if (method == 'number_up'):
                 stat_list += str(memer[1]) + ' ' + db_server.rx1 + '\n'
@@ -445,10 +489,13 @@ class LeaderBoyt:
             elif (method == 'avg_up'):
                 stat_list += '%.2f' % (memer[1]) + \
                     ' ' + db_server.rx1 + '\n'
-            else:
+            elif (method == 'avg_down'):
                 stat_list += '%.2f' % (memer[1]) + \
-                    ' ' + db_server.rx2 + '\n'
-        
+                    ' ' + '\n'
+            elif (method == 'beta_top' or method == 'beta_down'):
+                stat_list += '%.2f' % (memer[1] * 100) + '% ' + \
+                    ' Quality\n'
+
         board_embed.add_field(name=heading, value=user_list, inline=True)
         board_embed.add_field(name='Stats', value=stat_list, inline=True)
 
@@ -593,6 +640,19 @@ class LeaderBoyt:
             return False
         
         return True
+    
+    def refresh_beta_dist(self, db_server):
+        self.stat_dist_data = {}
+        
+        startdate = datetime.now() - timedelta(weeks=4)
+        total_averages = self.session.query(Message.user_id, func.avg(cast(Message.rx1_count, Float) / cast(Message.rx1_count + Message.rx2_count, Float))).filter(
+            Message.server_id == db_server.id, Message.created_at < startdate).group_by(Message.user_id).all()
+        average_list = [round(aver[1], 3) for aver in total_averages]
+        beta_stats = beta.fit(average_list)
+
+        self.stat_dist_data['alpha'], self.stat_dist_data['beta'], self.stat_dist_data['lower'], self.stat_dist_data['scale'] = beta_stats
+        self.stat_dist_data['data'] = total_averages
+        self.stat_dist_data['timestamp'] = datetime.now()
 
     def is_int(self, val):
         try:

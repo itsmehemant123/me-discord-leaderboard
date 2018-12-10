@@ -12,3 +12,5 @@ SQLAlchemy == 1.2.5
 # client.py: 1,5
 # leaderboard.py: 6,10,11
 discord.py == 0.16.12
+
+scipy == 0.19.1
