@@ -645,7 +645,7 @@ class LeaderBoyt:
         self.stat_dist_data = {}
         
         startdate = datetime.now() - timedelta(weeks=4)
-        total_averages = self.session.query(Message.user_id, func.avg(cast(Message.rx1_count, Float) / cast(Message.rx1_count + Message.rx2_count, Float))).filter(
+        total_averages = self.session.query(Message.user_id, func.sum(cast(Message.rx1_count, Float)) / func.sum(cast(Message.rx1_count + Message.rx2_count, Float))).filter(
             Message.server_id == db_server.id, Message.created_at < startdate).group_by(Message.user_id).all()
         average_list = [round(aver[1], 3) for aver in total_averages]
         beta_stats = beta.fit(average_list)
