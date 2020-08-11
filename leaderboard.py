@@ -42,7 +42,7 @@ class LeaderBoyt(commands.Cog):
 
             if (current_message is None or current_message == ''):
                 current_message = '\n'.join(
-                    [i['url'] for i in message.attachments])
+                    [i.url for i in message.attachments])
 
             if (current_user.id not in temp_cache['user_keys']):
                 current_user_index = len(temp_cache['new_users'])
@@ -379,10 +379,10 @@ class LeaderBoyt(commands.Cog):
             logging.info('CHeck for self')
             target = ctx.message.author.id
         else:
-            logging.info('Checking for user ' + target)
+            logging.info('Checking for user ' + str(target))
             target = re.sub('[<@!>]', '', target)
 
-        logging.info('Target: ' + target)
+        logging.info('Target: ' + str(target))
         db_user = self.session.query(User).filter(
             User.discord_id == str(target)).first()
         db_server = self.session.query(Server).filter(
@@ -681,7 +681,7 @@ class LeaderBoyt(commands.Cog):
     def get_message_content(self, message):
         content = message.content
         if (content == '' or content is None):
-            content = '\n'.join([i['url'] for i in message.attachments])
+            content = '\n'.join([i.url for i in message.attachments])
 
         return content
 
